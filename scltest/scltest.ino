@@ -11,21 +11,21 @@ Adafruit_INA260 ina260 = Adafruit_INA260();
 void tcaselect(uint8_t i) {
   if (i > 7) return;
  
-  Wire.beginTransmission(TCAADDR);
+  Wire.beginTransmission(TCAADDR);  
   Wire.write(1 << i);
   Wire.endTransmission();  
 }
 
 /* RELAYS */
 // Relay 1 is for rectifier switch
-const int RELAY1_1 = 22;  // [HIGH, Rectifier disconnected]
+const int RELAY1_1 = 4;  // [HIGH, Rectifier disconnected]
                           // [LOW, Rectifier connected]
-const int RELAY1_2 = 23;  // NOT CONNECTED
+const int RELAY1_2 = 2;  // NOT CONNECTED
 
 // Relay 2 is for battery charge/discharge
-const int RELAY2_1 = 52;  // [HIGH, Battery disconnected]
+const int RELAY2_1 = 8;  // [HIGH, Battery disconnected]
                           // [LOW, Move to RELAY2_2]
-const int RELAY2_2 = 53;  // [HIGH, Battery charging]
+const int RELAY2_2 = 7;  // [HIGH, Battery charging]
                           // [LOW, Battery discharging]
 
 /* Variables to store power */
@@ -59,34 +59,34 @@ void setup() {
   battery="DISCONNECT";
 
   /* Wait for Serial to start */
-  while (!Serial);
-  delay(1000);
+  //while (!Serial);
+  //delay(1000);
  
   /* Open serial link*/
   Wire.begin();
-  Serial.begin(115200);
-  Serial.println("\nTCAScanner ready!");
+  Serial.begin(9600);
+  //Serial.println("\nTCAScanner ready!");
   
   for (uint8_t t=0; t<8; t++) {
     tcaselect(t);
-    Serial.print("TCA Port #"); Serial.println(t);
+    //Serial.print("TCA Port #"); Serial.println(t);
 
     for (uint8_t addr = 0; addr<=127; addr++) {
       if (addr == TCAADDR) continue;
       
       uint8_t data;
       if (! twi_writeTo(addr, &data, 0, 1, 1)) {
-         Serial.print("Found I2C 0x");  Serial.println(addr,HEX);
+         //Serial.print("Found I2C 0x");  Serial.println(addr,HEX);
       }
     }
     /* initialize all ina260's */
     if (!ina260.begin()) {
-      Serial.println("Couldn't find INA260 chip");
+      //Serial.println("Couldn't find INA260 chip");
     } else {
-      Serial.println("Found INA260 chip");
+      //Serial.println("Found INA260 chip");
     } 
   }
-  Serial.println("\ndone");
+  //Serial.println("\ndone");
   delay(1000);
 }
 
@@ -159,6 +159,7 @@ void loop() {
                 + "\"Discharge\": " + String(discharge_power) + ", " 
                 + "\"BATTERY\": \"" + battery + "\", " 
                 + "\"GRID\": \"" + grid + "\"}");
+                //Serial.println("plx");
 }
 
 
@@ -172,12 +173,12 @@ void gridOFF() {
     digitalWrite(RELAY1_1, HIGH);
 }
 /* BATTERY FUNCTIONS */
-void batteryCHARGE() {
+void batteryDISCHARGE() {
     digitalWrite(RELAY2_1, LOW);
     digitalWrite(RELAY2_2, HIGH);
 }
-void batteryDISCHARGE() {
-    gridOFF(); // Turn off grid before discharging battery
+void batteryCHARGE() {
+    //gridOFF(); // Turn off grid before discharging battery
     digitalWrite(RELAY2_1, LOW);
     digitalWrite(RELAY2_2, LOW);
 }

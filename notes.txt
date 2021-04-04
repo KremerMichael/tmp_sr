@@ -1,0 +1,2 @@
+Charge: 8am-3pm
+Capacity should be: 90Ah, stop at 70Ah
