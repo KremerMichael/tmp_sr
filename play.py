@@ -13,7 +13,7 @@ import time
 ########################
 # GENERICS
 ########################
-port_linux='/dev/ttyACM1'
+port_linux='/dev/ttyACM0'
 port_mac='/dev/tty.usbmodem11101'
 ARDUINO = serial.Serial(port=port_linux, baudrate=9600, timeout=.1)
 
@@ -49,6 +49,11 @@ Grid_last = 0
 Charge_last = 0
 Discharge_last =0
 
+# For battery
+battery_Ah = 90 
+full = False
+charge_list = []
+
 
 ########################
 # START
@@ -70,11 +75,12 @@ while True:
     # TIMING
     ########################
     # Pause a second
-    time.sleep(1)
+    time.sleep(2)
     # Get datetime for transaction
     now=datetime.datetime.now()
     date_=now.strftime("%m/%d/%Y")
     time_=now.strftime("%H:%M:%S")
+    print(now)
 
 
     ########################
@@ -94,13 +100,24 @@ while True:
         # Need to turn grid on
         if grid_state == "OFF":
             tx = "gON"
+            full = False
         # Need to charge battery
-        elif now.hour > 8 and now.hour < 14:
-            if battery_state != 'CHARGING':
+        elif now.hour > 8 and now.hour < 15:
+            if full:
+                battey_Ah = 90
+                if battery_state != "DISCONNECT":
+                    tx = "bDISCONNECT"
+            elif battery_state != 'CHARGING':
                 tx = "bCHARGE"
         # Need to stop discharging battery
-        elif est_charge < 70:
-            tx = "bDISCONNECT"
+        else:
+            full = False
+            if battery_Ah < 70:
+                tx = "bDISCONNECT"
+            else:
+                if battery_state != "DISCHARGE":
+                    tx = "bDISCHARGE"
+
     
 
     ########################
@@ -170,10 +187,48 @@ while True:
                     Discharge_washed = rx_dict['Discharge']
                     Discharge_last = rx_dict['Discharge']
 
-            # Write to file
-            file_raw.write("{},{},{},{},{},{},{},{},{},{},{}\n".format(date_,time_,rx_dict['Home0'],rx_dict['Home1'],rx_dict['Home2'],rx_dict['Home3'],rx_dict['Grid'],rx_dict['Charge'],rx_dict['Discharge'],rx_dict['BATTERY'],rx_dict['GRID']))
-            file_washed.write("{},{},{},{},{},{},{},{},{},{},{}\n".format(date_,time_,Home0_washed,Home1_washed,Home2_washed,Home3_washed,Grid_washed,Charge_washed,Discharge_washed,rx_dict['BATTERY'],rx_dict['GRID']))
+            # Calculate solar power
+            power_solar = (rx_dict['Home0'] + rx_dict['Home1'] + rx_dict['Home2'] + rx_dict['Home3'] + rx_dict['Charge']) - (rx_dict['Grid'] + rx_dict['Discharge'])
+            power_solar_washed = (Home0_washed + Home1_washed + Home2_washed + Home3_washed + Charge_washed) - (Grid_washed + Discharge_washed)
 
+
+
+            ########################
+            # BATTERY STATE
+            ########################
+            #if not full:
+            if rx_dict['BATTERY'] == 'DISCONNECT':
+                # Do nothing
+                battery_Ah = battery_Ah
+                charge_list = []
+            elif rx_dict['BATTERY'] == 'CHARGE':
+                if len(charge_list) < 180:
+                    charge_list.append(Charge_washed)
+                    avg_charge = 1000000
+                else:
+                    charge_list.pop(0)
+                    charge_list.append(Charge_washed)
+                    avg_charge = sum(charge_list)/len(charge_list)
+                if avg_charge < 1000:
+                    battery_Ah = 90
+                else:
+                    charge_Wh = Charge_washed / (30 * 60 * 1000)
+                    charge_Ah = charge_Wh / (rx_dict['Voltage']/1000)
+                    battery_Ah = battery_Ah + charge_Ah
+            elif rx_dict['BATTERY'] == 'DISCHARGE':
+                charge_list = []
+                discharge_Wh = Discharge_washed / (30 * 60 * 1000)
+                discharge_Ah = discharge_Wh / (rx_dict['Voltage']/1000)
+                battery_Ah = battery_Ah - discharge_Ah
+            if battery_Ah == 90:
+                full = True
+            else:
+                full = False
+    
+
+            # Write to file
+            file_raw.write("{},{},{},{},{},{},{},{},{},{},{},{},{}\n".format(date_,time_,rx_dict['Home0'],rx_dict['Home1'],rx_dict['Home2'],rx_dict['Home3'],rx_dict['Grid'],rx_dict['Charge'],rx_dict['Discharge'],power_solar,rx_dict['BATTERY'],rx_dict['GRID'],rx_dict['Voltage'],battery_Ah))
+            file_washed.write("{},{},{},{},{},{},{},{},{},{},{},{},{}\n".format(date_,time_,Home0_washed,Home1_washed,Home2_washed,Home3_washed,Grid_washed,Charge_washed,Discharge_washed,power_solar_washed,rx_dict['BATTERY'],rx_dict['GRID'],rx_dict['Voltage'],battery_Ah))
 
             ########################
             # MAKING TABLES
@@ -186,9 +241,13 @@ while True:
             print()
 
             # Make a table for the power
-            power_solar = (rx_dict['Home0'] + rx_dict['Home1'] + rx_dict['Home2'] + rx_dict['Home3'] + rx_dict['Charge']) - (rx_dict['Grid'] + rx_dict['Discharge'])
-            power_table = [['Home0', rx_dict['Home0']], ['Home1', rx_dict['Home1']], ['Home2', rx_dict['Home2']], ['Home3', rx_dict['Home3']], ['Grid', rx_dict['Grid']], ['Charge', rx_dict['Charge']], ['Discharge', rx_dict['Discharge']], ['Solar', power_solar]]
-            print(tabulate(power_table, headers=['Name', 'Power (mW)'], tablefmt='orgtbl'))
+            power_table = [['Home0', rx_dict['Home0'], Home0_washed], ['Home1', rx_dict['Home1'], Home1_washed], ['Home2', rx_dict['Home2'], Home2_washed], ['Home3', rx_dict['Home3'], Home3_washed], ['Grid', rx_dict['Grid'], Grid_washed], ['Charge', rx_dict['Charge'], Charge_washed], ['Discharge', rx_dict['Discharge'], Discharge_washed], ['Solar', power_solar, power_solar_washed]]
+            print(tabulate(power_table, headers=['Name', 'Power_raw (mW)', 'Power_washed (mW)'], tablefmt='orgtbl'))
+            print()
+
+            # Print Battery info
+            print("bus voltage: {}".format(rx_dict["Voltage"]/1000))
+            print("battery Ah: {}".format(battery_Ah))
             print()
         
         # Catch communication error w/ arduino

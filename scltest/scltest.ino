@@ -36,6 +36,7 @@ int home0_power;
 int home1_power;
 int home2_power;
 int home3_power;
+int grid_voltage;
 
 /* For state of system */
 String input;    // For Serial Input
@@ -124,6 +125,7 @@ void loop() {
   /* Read and store power meters */
   tcaselect(0); // Grid Meter
   grid_power = ina260.readPower();
+  grid_voltage = ina260.readBusVoltage();
   delay(20);
 
   tcaselect(1); // Charging Meter
@@ -157,6 +159,7 @@ void loop() {
                 + "\"Grid\": " + String(grid_power) + ", " 
                 + "\"Charge\": " + String(charge_power) + ", " 
                 + "\"Discharge\": " + String(discharge_power) + ", " 
+                + "\"Voltage\": " + String(grid_voltage) + ", "
                 + "\"BATTERY\": \"" + battery + "\", " 
                 + "\"GRID\": \"" + grid + "\"}");
                 //Serial.println("plx");
